@@ -5,7 +5,7 @@
   "keywords" : [
     "option", "context menu", "directory option", "file option",
     "create directory","copy directory", "cut directory", "delete directory",
-    "create file","copy file", "cut file", "delete file"
+    "create file","copy file", "cut file", "delete file", "php"
   ],
   "license": "MIT",
   "authors": [
@@ -18,8 +18,8 @@
     "php": ">=7.1"
   },
   "autoload": {
-    "classmap": [
-      "src/Option.php"
-    ]
+    "psr-4": {
+      "Bittr\\": "src/"
+    }
   }
 }

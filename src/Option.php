@@ -39,6 +39,15 @@
 
 declare(strict_types=1);
 
+namespace Bittr;
+
+use Closure;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use RuntimeException;
+use SplFileInfo;
+use Throwable;
+
 class Option extends SplFileInfo
 {
     /** @var bool  */
@@ -98,7 +107,7 @@ class Option extends SplFileInfo
      * Handles error and status.
      *
      * @param string $message
-     * @return \Option
+     * @return \Bittr\Option
      */
     private function error(string $message): Option
     {
@@ -117,7 +126,7 @@ class Option extends SplFileInfo
      * @param Closure $closure
      * @param int     $nesting
      * @param int     $mode
-     * @return \Option
+     * @return \Bittr\Option
      */
     public function open(Closure $closure, int $nesting = Option::NEST_NONE, int $mode = Option::LEAVES_ONLY): Option
     {
@@ -273,7 +282,7 @@ class Option extends SplFileInfo
      * Set mode (permission)
      *
      * @param int $mode
-     * @return \Option
+     * @return \Bittr\Option
      */
     public function setMode(int $mode): Option
     {

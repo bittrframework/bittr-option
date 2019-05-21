@@ -1,0 +1,25 @@
+{
+  "name": "bittrframework/bittr-option",
+  "description": "Perform a context action on specified resource.",
+  "type": "library",
+  "keywords" : [
+    "option", "context menu", "directory option", "file option",
+    "create directory","copy directory", "cut directory", "delete directory",
+    "create file","copy file", "cut file", "delete file"
+  ],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Bittr Framework",
+      "email": "info@bittrframework.com"
+    }
+  ],
+  "require": {
+    "php": ">=7.1"
+  },
+  "autoload": {
+    "classmap": [
+      "src/Option.php"
+    ]
+  }
+}

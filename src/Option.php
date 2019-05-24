@@ -61,7 +61,7 @@ class Option extends SplFileInfo
     /** @var bool  */
     private $as_cut = false;
     /** @var int  */
-    private $mode = 0777;
+    private $mode = 0755;
     /** @var null|string */
     private static $prefix = null;
     /** @var int  */
@@ -317,99 +317,80 @@ class Option extends SplFileInfo
      * Copies file or directories to specified directory.
      *
      * @param string $to
-     * @param bool   $contents_only
-     * @param array  $failed_copies
      * @return Option
      */
-    public function copy(string $to, bool $contents_only = false, array &$failed_copies = []): Option
+    public function copy(string $to): Option
     {
-        $info = new SplFileInfo( "{$this->base_path}{$to}");
-        $to   = $info->getPathname();
-        $this->status = true;
-
-        $name = $this->getPathname();
-        // If dir copy
-        if ($this->isDir())
-        {
-            if (! $info->isReadable())
-            {
-                mkdir($to, $this->mode, true);
-            }
+        $original = $this->getPathname();
+        if ($this->isDir()) {
 
             try
             {
                 $iterator = new RecursiveIteratorIterator(
-                    new RecursiveDirectoryIterator($name, RecursiveDirectoryIterator::SKIP_DOTS),
+                    new RecursiveDirectoryIterator($original, RecursiveDirectoryIterator::SKIP_DOTS),
                     RecursiveIteratorIterator::SELF_FIRST
                 );
             }
             catch (Throwable $throwable)
             {
-                return $this->error("\"{$name}\" could not be found. Or insufficient access permission.");
+                return $this->error("\"{$original}\" could not be found. Or insufficient access permission.");
             }
 
-            $dirs = [];
-            if (! $contents_only)
+            if (! is_readable($to))
             {
-                if ($info->isReadable())
-                {
-                    $failed_copies['dir'][] = $this->getRealPath();
-                    return $this->error("Directory: \"$to\" already exist.");
-                }
-
-                if ($this->as_cut)
-                {
-                    $dirs[] = $name;
-                }
-                $this->status = @mkdir($to, $this->mode, true);
+                mkdir($to, $this->mode, true);
             }
 
-            /** @var SplFileInfo $file_info */
-            foreach ($iterator as $file_info)
+            /** @var SplFileInfo $file_or_dir */
+            foreach ($iterator as $file_or_dir)
             {
-                if ($file_info->isFile())
+                $source = $to . DIRECTORY_SEPARATOR . $file_or_dir->getFilename();
+
+                if ($file_or_dir->isFile())
                 {
-                    $this->move($file_info, $to, $failed_copies);
+                    if (! $file_or_dir->isReadable() || $this->force)
+                    {
+                        copy($file_or_dir->getRealPath(), $source);
+                    }
                 }
                 else
                 {
-                    $path = $to . str_replace($this->getPathname(), '', $file_info->getPathname());
-                    if (is_readable($path))
-                    {
-                        $failed_copies['dir'][] = $file_info->getRealPath();
-                        return $this->error("Directory: \"{$file_info->getFilename()}\" already exist in \"{$to}\".");
-                    }
-                    else
-                    {
-                        $this->status = @mkdir($path);
-                        if ($this->as_cut)
-                        {
-                            $dirs[] = $file_info->getPathname();
-                        }
-                    }
-                }
-            }
-
-            if (! empty($dirs))
-            {
-                # will be populated on cut
-                foreach (array_reverse($dirs) as $dir)
-                {
-                    $this->status = @rmdir($dir);
+                    @mkdir($source, $this->mode);
                 }
             }
         }
         else
         {
-            if (is_readable($to))
+            $last = explode(DIRECTORY_SEPARATOR, $to);
+            $file = trim(array_pop($last));
+            $dir  = trim(implode(DIRECTORY_SEPARATOR, $last));
+
+            if ($dir)
             {
-                if (! $this->force)
+                if (! is_readable($dir))
                 {
-                    $failed_copies['file'][] = $name;
-                    return $this->error("File: \"{$to}\" already exist.");
+                    mkdir($dir, $this->mode, true);
                 }
+                $dir .= DIRECTORY_SEPARATOR;
             }
-            $this->status = @copy($name, $to);
+
+            if (! $file)
+            {
+                $file = $this->getFilename();
+            }
+
+            $new_path = "{$dir}{$file}";
+
+            if (is_readable($new_path) && ! $this->force)
+            {
+                return $this->error("File \"{$new_path}\" already exist.");
+            }
+
+            @copy($this->getPathname(), $new_path);
+            if ($this->as_cut)
+            {
+                unlink($this->getPathname());
+            }
         }
 
         return $this;
@@ -419,14 +400,12 @@ class Option extends SplFileInfo
      * Cuts file or directories to specified directory
      *
      * @param string $to
-     * @param bool   $create
-     * @param array  $failed_copies
      * @return $this
      */
-    public function cut(string $to, bool $create = true, array &$failed_copies = []): Option
+    public function cut(string $to): Option
     {
         $this->as_cut = true;
-        $this->copy($to, $create, $failed_copies);
+        $this->copy($to);
 
         return $this;
     }

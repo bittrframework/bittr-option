@@ -4,7 +4,9 @@ use Bittr\Option;
 
 require_once 'src/Option.php';
 
-(new Option('tmp-dir', true, true))->createFolder();
+$m = (new Option('tmp-dir', true, true))->createFolder();
+
+//var_dump($m->msg());
 (new Option('tmp-dir/tmp-file1', true, true))->createFile();
 (new Option('tmp-dir/tmp-file2', true, true))->createFile();
 (new Option('tmp-dir/tmp-file3', true, true))->createFile();
@@ -16,4 +18,6 @@ require_once 'src/Option.php';
 (new Option('new-tmp-dir/tmp-file2', true, true))->copy('tmp-file-copy1');
 
 
-//(new Option('tmp-dir', true, true))->copy('new-tmp-dir2');
+(new Option('tmp-dir', true, true))->copy('new-tmp-dir2');
+
+(new Option('tmp-dir'))->rename('bar');

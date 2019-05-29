@@ -42,9 +42,9 @@ declare(strict_types=1);
 namespace Bittr;
 
 use Closure;
+use DirectoryIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
-use RuntimeException;
 use SplFileInfo;
 use Throwable;
 
@@ -58,8 +58,8 @@ class Option extends SplFileInfo
     private $status = false;
     /** @var null|string  */
     private $base_path = null;
-    /** @var bool  */
-    private $as_cut = false;
+    /** @var string  */
+    private $msg = false;
     /** @var int  */
     private $mode = 0755;
     /** @var null|string */
@@ -103,19 +103,10 @@ class Option extends SplFileInfo
         $this->base_path = $this->getPath();
     }
 
-    /**
-     * Handles error and status.
-     *
-     * @param string $message
-     * @return \Bittr\Option
-     */
-    private function error(string $message): Option
+    private function stat(bool $status, string $type, string $arg, string $arg2 = null)
     {
-        $this->status = false;
-        if (! $this->silent)
-        {
-            throw new RuntimeException($message);
-        }
+        $this->status = $status;
+        $this->msg    = ($status ? 'complete' : 'failed')  . "::{$type} for ({$arg}" . ($arg2 ? ", {$arg2})" : ')');
 
         return $this;
     }
@@ -182,7 +173,7 @@ class Option extends SplFileInfo
         {
             if ($this->isFile())
             {
-                $this->status = @unlink($name);
+                $this->stat(@unlink($name), 'unlink', $name);
             }
             else
             {
@@ -193,22 +184,24 @@ class Option extends SplFileInfo
 
                 if ($iterator->valid() && ! $this->force)
                 {
-                    $this->error("The folder(\"{$name}\") you are trying to delete is not empty.");
+                    return $this->stat(false, 'rmdir(on non empty directory)', $name);
                 }
-                else
+
+                /** @var SplFileInfo $file_info */
+                foreach ($iterator as $file_info)
                 {
-                    /** @var SplFileInfo $file_info */
-                    foreach ($iterator as $file_info)
-                    {
-                        $file_info->isFile() ? unlink($file_info->getRealPath()) : rmdir($file_info->getRealPath());
-                    }
-                    $this->status = @rmdir($this->getPathname());
+                    $path = $file_info->getRealPath();
+                    $file_info->isFile()
+                        ? $this->stat(@unlink($path), 'unlink', $path)
+                        : $this->stat(@rmdir($path), 'rmdir', $path);
                 }
+
+                return $this->stat(@rmdir($name), 'rmdir', $name);
             }
         }
         else
         {
-            $this->error("\"{$name}\" is not a directory. Or insufficient access permission.");
+            return $this->stat(false, 'rm/unlink(on non existing file/dir or insufficient permission)', $name);
         }
 
         return $this;
@@ -221,17 +214,9 @@ class Option extends SplFileInfo
      */
     public function createFolder(): Option
     {
-        $this->status = true;
-        if ($this->isReadable())
-        {
-            return $this->error("Directory: \"{$this->getFilename()}\" already exist in \"{$this->getPath()}\".");
-        }
-        else
-        {
-            $this->status = @mkdir($this->getPathname(), $this->mode, true);
-        }
+        $path = $this->getPathname();
 
-        return $this;
+        return $this->stat(@mkdir($path, $this->mode, true), 'mkdir', $path);
     }
 
     /**
@@ -241,17 +226,15 @@ class Option extends SplFileInfo
      */
     public function createFile(): Option
     {
-        $this->status = true;
         if ($this->isReadable() && $this->isFile())
         {
-            if ($this->force)
+            if (! $this->force)
             {
-                $this->status = @unlink($this->getPathname());
+                return $this;
             }
-            else
-            {
-                return $this->error("File: \"{$this->getFilename()}\" already exist in \"{$this->getPath()}\".");
-            }
+
+            $path = $this->getPathname();
+            $this->stat(@unlink($path), 'unlink', $path);
         }
         $this->openFile('a');
 
@@ -262,17 +245,19 @@ class Option extends SplFileInfo
      * Renames a file or directory.
      *
      * @param string $new_name
+     * @param bool   $cut
      * @return Option
      */
-    public function rename(string $new_name): Option
+    public function rename(string $new_name, bool $cut = false): Option
     {
-        if (! $this->isReadable())
+        if ($this->isReadable())
         {
-            $this->error("\"{$this->getPathname()}\" could not be found. Or insufficient access permission.");
-        }
-        else
-        {
-            $this->status = @rename($this->getPathname(), "{$this->getPath()}/{$new_name}");
+            $current  = $this->getPathname();
+            if (! $cut)
+            {
+                $new_name = rtrim($this->getRealPath(), $current) . "{$new_name}";
+            }
+            $this->stat(@rename($current, $new_name), 'rename', $current, $new_name);
         }
 
         return $this;
@@ -290,29 +275,6 @@ class Option extends SplFileInfo
 
         return $this;
     }
-
-    private function move(SplFileInfo $from, string $to, array &$failed_copies): void
-    {
-        $old_file = $from->getRealPath();
-        $path     = $to . str_replace($this->getRealPath(), '', $old_file);
-        if (is_readable($path))
-        {
-            if (! $this->force)
-            {
-                $failed_copies['file'][] = $old_file;
-                $this->error("File: \"{$from->getFilename()}\" already exist in \"{$to}\".");
-
-                return;
-            }
-        }
-
-        $this->status = @copy($old_file, $path);
-        if ($this->as_cut)
-        {
-            $this->status = @unlink($old_file);
-        }
-    }
-
     /**
      * Copies file or directories to specified directory.
      *
@@ -333,12 +295,12 @@ class Option extends SplFileInfo
             }
             catch (Throwable $throwable)
             {
-                return $this->error("\"{$original}\" could not be found. Or insufficient access permission.");
+                return $this->stat(false, 'permission', $original);
             }
 
             if (! is_readable($to))
             {
-                mkdir($to, $this->mode, true);
+                $this->stat(@mkdir($to, $this->mode, true), 'mkdir', $to);
             }
 
             /** @var SplFileInfo $file_or_dir */
@@ -350,12 +312,13 @@ class Option extends SplFileInfo
                 {
                     if (! $file_or_dir->isReadable() || $this->force)
                     {
-                        copy($file_or_dir->getRealPath(), $source);
+                        $file = $file_or_dir->getRealPath();
+                        $this->stat(@copy($file, $source), 'copy', $file, $source);
                     }
                 }
                 else
                 {
-                    @mkdir($source, $this->mode);
+                    $this->stat(@mkdir($source, $this->mode), 'mkdir', $source);
                 }
             }
         }
@@ -369,7 +332,7 @@ class Option extends SplFileInfo
             {
                 if (! is_readable($dir))
                 {
-                    mkdir($dir, $this->mode, true);
+                    $this->stat(@mkdir($dir, $this->mode, true), 'mkdir', $dir);
                 }
                 $dir .= DIRECTORY_SEPARATOR;
             }
@@ -380,16 +343,13 @@ class Option extends SplFileInfo
             }
 
             $new_path = "{$dir}{$file}";
-
             if (is_readable($new_path) && ! $this->force)
             {
-                return $this->error("File \"{$new_path}\" already exist.");
+                $this->stat(false, 'exist', $new_path);
             }
-
-            @copy($this->getPathname(), $new_path);
-            if ($this->as_cut)
+            else
             {
-                unlink($this->getPathname());
+                $this->stat(@copy($original, $new_path), 'mkdir', $original, $new_path);
             }
         }
 
@@ -404,10 +364,7 @@ class Option extends SplFileInfo
      */
     public function cut(string $to): Option
     {
-        $this->as_cut = true;
-        $this->copy($to);
-
-        return $this;
+        return $this->rename($to, true);
     }
 
     /**
@@ -418,6 +375,16 @@ class Option extends SplFileInfo
     public function status(): bool
     {
         return $this->status;
+    }
+
+    /**
+     * Gets last exec message
+     *
+     * @return string
+     */
+    public function msg(): string
+    {
+        return $this->msg;
     }
 
     /**

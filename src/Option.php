@@ -102,7 +102,16 @@ class Option extends SplFileInfo
         parent::__construct(self::$prefix . $file);
         $this->base_path = $this->getPath();
     }
-
+    
+    /**
+     * Generate process message.
+     * 
+     * @param bool        $status
+     * @param string      $type
+     * @param string      $arg
+     * @param string|null $arg2
+     * @return $this
+     */
     private function stat(bool $status, string $type, string $arg, string $arg2 = null)
     {
         $this->status = $status;
